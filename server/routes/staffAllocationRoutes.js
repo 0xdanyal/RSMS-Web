@@ -1,3 +1,5 @@
+
+
 import express from 'express';
 import StaffAllocation from '../models/staffAllocationModel.js';
 import {auth} from '../middleware/auth.js';
@@ -29,6 +31,25 @@ router.get('/', auth, async (req, res) => {
   try {
     const allocations = await StaffAllocation.find({ society: req.params.societyId });
     res.json(allocations);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Delete a staff allocation by ID
+router.delete('/:allocationId', auth, async (req, res) => {
+  try {
+    const { societyId, allocationId } = req.params;
+    const allocation = await StaffAllocation.findOneAndDelete({
+      _id: allocationId,
+      society: societyId
+    });
+
+    if (!allocation) {
+      return res.status(404).json({ message: 'Allocation not found' });
+    }
+
+    res.json({ message: 'Allocation deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

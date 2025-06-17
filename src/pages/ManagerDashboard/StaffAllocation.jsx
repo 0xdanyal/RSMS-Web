@@ -1,3 +1,5 @@
+
+
 // import React, { useState, useEffect } from 'react';
 
 // export default function StaffAllocation({ housingEntries, staff, showPopup, societyId }) {
@@ -24,11 +26,8 @@
 //     s.phoneNumber.toLowerCase().includes(staffSearchQuery.toLowerCase())
 //   );
 
-//   // Get selected staff roles
-//   const selectedStaffRoles = staff
-//     .filter(s => allocationForm.staffIds.includes(s._id))
-//     .map(s => s.role)
-//     .join(', ');
+//   // Get selected staff details (name and role)
+//   const selectedStaff = staff.filter(s => allocationForm.staffIds.includes(s._id));
 
 //   useEffect(() => {
 //     // Fetch existing allocations
@@ -82,6 +81,14 @@
 
 //   const handleClearStaffSearch = () => {
 //     setStaffSearchQuery('');
+//   };
+
+//   const handleDeselectStaff = (staffId) => {
+//     setAllocationForm(prev => ({
+//       ...prev,
+//       staffIds: prev.staffIds.filter(id => id !== staffId)
+//     }));
+//     setFormErrors(prev => ({ ...prev, staffIds: '' }));
 //   };
 
 //   const handleSubmit = async (e) => {
@@ -194,8 +201,24 @@
 //             <small>Hold Ctrl (Windows) or Cmd (Mac) to select multiple staff members</small>
 //           </div>
 //           <div className="form-group">
-//             <label>Selected Roles</label>
-//             <p>{selectedStaffRoles || 'No staff selected'}</p>
+//             <label>Selected Staff</label>
+//             <div className="selected-staff-container">
+//               {selectedStaff.length === 0 ? (
+//                 <p>No staff selected</p>
+//               ) : (
+//                 selectedStaff.map(s => (
+//                   <span key={s._id} className="selected-staff-label">
+//                     {`${s.fullName} (${s.role})`}
+//                     <span
+//                       className="deselect-icon"
+//                       onClick={() => handleDeselectStaff(s._id)}
+//                     >
+//                       ×
+//                     </span>
+//                   </span>
+//                 ))
+//               )}
+//             </div>
 //           </div>
 //           <button type="submit" className="submit-button">Allocate Staff</button>
 //         </form>
@@ -222,6 +245,7 @@
 //   );
 // }
 
+
 import React, { useState, useEffect } from 'react';
 
 export default function StaffAllocation({ housingEntries, staff, showPopup, societyId }) {
@@ -234,18 +258,43 @@ export default function StaffAllocation({ housingEntries, staff, showPopup, soci
   const [allocations, setAllocations] = useState([]);
   const [staffSearchQuery, setStaffSearchQuery] = useState('');
 
-  // Get unique addresses from housing entries
-  const uniqueAddresses = [...new Set(housingEntries.map(entry => entry.address))];
+  // Get allocated addresses and house numbers
+  const allocatedAddresses = new Set(allocations.map(allocation => allocation.address));
+  const allocatedHouseNumbers = allocations.reduce((acc, allocation) => {
+    if (!acc[allocation.address]) {
+      acc[allocation.address] = new Set();
+    }
+    allocation.houseNumbers.forEach(houseNumber => acc[allocation.address].add(houseNumber));
+    return acc;
+  }, {});
 
-  // Get house numbers for the selected address
+  // Get allocated staff IDs
+  const allocatedStaffIds = new Set(
+    allocations.flatMap(allocation => allocation.staffIds)
+  );
+
+  // Get unique addresses, excluding allocated ones
+  const uniqueAddresses = [...new Set(
+    housingEntries
+      .map(entry => entry.address)
+      .filter(address => !allocatedAddresses.has(address))
+  )];
+
+  // Get house numbers for the selected address, excluding allocated ones
   const availableHouseNumbers = housingEntries
     .filter(entry => entry.address === allocationForm.address)
-    .map(entry => entry.houseNumber);
+    .map(entry => entry.houseNumber)
+    .filter(houseNumber => 
+      !allocatedHouseNumbers[allocationForm.address]?.has(houseNumber)
+    );
 
-  // Filter staff based on search query
+  // Filter staff based on search query and exclude allocated staff
   const filteredStaff = staff.filter(s =>
-    s.fullName.toLowerCase().includes(staffSearchQuery.toLowerCase()) ||
-    s.phoneNumber.toLowerCase().includes(staffSearchQuery.toLowerCase())
+    !allocatedStaffIds.has(s._id) &&
+    (
+      s.fullName.toLowerCase().includes(staffSearchQuery.toLowerCase()) ||
+      s.phoneNumber.toLowerCase().includes(staffSearchQuery.toLowerCase())
+    )
   );
 
   // Get selected staff details (name and role)
@@ -351,6 +400,29 @@ export default function StaffAllocation({ housingEntries, staff, showPopup, soci
     }
   };
 
+  const handleDelete = async (allocationId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/societies/${societyId}/allocations/${allocationId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        showPopup(errorData.message || 'Error deleting allocation', true);
+        return;
+      }
+
+      setAllocations(allocations.filter(allocation => allocation._id !== allocationId));
+      showPopup('✅ Allocation deleted successfully!', false);
+    } catch (error) {
+      showPopup(`Error deleting allocation: ${error.message}`, true);
+    }
+  };
+
   return (
     <div className="staff-allocation">
       <h2>Staff Allocation</h2>
@@ -452,12 +524,37 @@ export default function StaffAllocation({ housingEntries, staff, showPopup, soci
         ) : (
           <ul>
             {allocations.map(allocation => (
-              <li key={allocation._id}>
-                {allocation.address} (Houses: {allocation.houseNumbers.join(', ')}) - 
-                Staff: {allocation.staffIds.map(id => {
-                  const s = staff.find(s => s._id === id);
-                  return s ? `${s.fullName} (${s.role})` : 'Unknown';
-                }).join(', ')}
+              <li key={allocation._id} className="allocation-card">
+                <div className="allocation-header">
+                  <span className="allocation-icon">🏠</span>
+                  <h4>{allocation.address}</h4>
+                  <button
+                    className="delete-button"
+                    onClick={() => handleDelete(allocation._id)}
+                    title="Delete Allocation"
+                  >
+                    🗑️
+                  </button>
+                </div>
+                <div className="allocation-details">
+                  <div className="allocation-section">
+                    <span className="section-label">Houses:</span>
+                    <span className="section-content">{allocation.houseNumbers.join(', ')}</span>
+                  </div>
+                  <div className="allocation-section">
+                    <span className="section-label">Staff:</span>
+                    <div className="staff-list">
+                      {allocation.staffIds.map(id => {
+                        const s = staff.find(s => s._id === id);
+                        return (
+                          <span key={id} className="staff-item">
+                            {s ? `${s.fullName} (${s.role})` : 'Unknown'}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
