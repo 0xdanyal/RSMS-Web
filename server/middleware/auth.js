@@ -35,6 +35,7 @@ export const isAdmin = (req, res, next) => {
   next();
 };
 
+// later thus!!!
 export const isManager = (req, res, next) => {
   if (req.user.role !== 'manager') {
     return res.status(403).json({ message: 'Manager access required' });

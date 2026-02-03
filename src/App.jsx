@@ -20,7 +20,6 @@ function App() {
           <Route path="/admin" element={isAdmin ? <AdminDashboard /> : <Navigate to="/" />} />
           <Route path="/manager" element={isManager ? <ManagerDashboard /> : <Navigate to="/" />} />
           <Route path="/marketplace" element={<Marketplace />} />
-          {/* <Route path="/society/:id" element={<SocietyDetails />} /> */}
           <Route path="/" element={
             <>
               <Navbar />
